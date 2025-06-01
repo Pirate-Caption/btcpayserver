@@ -21,7 +21,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "BTCPAY_CHAINS": "btc",
         "BTCPAY_VERBOSE": "true",
-        "BTCPAY_POSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=39372;Database=btcpayserver",
+        "BTCPAY_POSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Password=postgres;Port=39372;Database=btcpayserver",
         "BTCPAY_DEBUGLOG": "debug.log",
         "BTCPAY_TORRCFILE": "../BTCPayServer.Tests/TestData/Tor/torrc",
         "BTCPAY_SOCKSENDPOINT": "localhost:9050",
@@ -29,7 +29,7 @@
         "BTCPAY_DOCKERDEPLOYMENT": "true",
         "BTCPAY_RECOMMENDED-PLUGINS": "",
         "BTCPAY_CHEATMODE": "true",
-        "BTCPAY_EXPLORERPOSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Port=39372;Database=nbxplorer"
+        "BTCPAY_EXPLORERPOSTGRES": "User ID=postgres;Include Error Detail=true;Host=127.0.0.1;Password=postgres;Port=39372;Database=nbxplorer"
       },
       "applicationUrl": "http://localhost:14142/"
     },

@@ -1,0 +1,69 @@
+version: '3.8'
+services:
+  bitcoind:
+    image: btcpayserver/bitcoin:23.0
+    container_name: btcpay_bitcoind_regtest
+    restart: unless-stopped
+    environment:
+      BITCOIN_NETWORK: regtest
+      BITCOIN_EXTRA_ARGS: |
+        rpcuser=btcpay
+        rpcpassword=btcpay123
+        rpcbind=0.0.0.0:18443
+        rpcallowip=0.0.0.0/0
+        port=18444
+        zmqpubrawblock=tcp://0.0.0.0:28332
+        zmqpubrawtx=tcp://0.0.0.0:28333
+        server=1
+        listen=1
+        listenonion=0
+        fallbackfee=0.0002
+        txindex=1
+    ports:
+      - "18443:18443"
+      - "18444:18444"
+      - "28332:28332"
+      - "28333:28333"
+    volumes:
+      - bitcoin_regtest_data:/data
+
+  nbxplorer:
+    image: nicolasdorier/nbxplorer:2.5.4
+    container_name: btcpay_nbxplorer_regtest
+    restart: unless-stopped
+    depends_on:
+      - bitcoind
+      - postgres
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_CHAINS: btc
+      NBXPLORER_BTCRPCUSER: btcpay
+      NBXPLORER_BTCRPCPASSWORD: btcpay123
+      NBXPLORER_BTCRPCURL: http://bitcoind:18443/
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
+      NBXPLORER_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Database=nbxplorer;Password=postgres
+      NBXPLORER_NOAUTH: 1
+    ports:
+      - "32838:32838"
+    volumes:
+      - nbxplorer_regtest_data:/datadir
+
+  postgres:
+    image: postgres:13
+    container_name: btcpay_postgres_regtest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: btcpayserver
+    ports:
+      - "39372:5432"
+    volumes:
+      - postgres_regtest_data:/var/lib/postgresql/data
+    command: postgres -c 'max_connections=200'
+
+volumes:
+  bitcoin_regtest_data:
+  nbxplorer_regtest_data:
+  postgres_regtest_data:
