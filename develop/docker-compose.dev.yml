@@ -177,7 +177,7 @@ services:
     environment:
       NBXPLORER_NETWORK: regtest
       NBXPLORER_BIND: 0.0.0.0:32838
-      NBXPLORER_CHAINS: btc,eth
+      NBXPLORER_CHAINS: btc,eth,btc,ltc,lbtc,usdt
       # Bitcoin 配置
       NBXPLORER_BTCRPCUSER: btcpay
       NBXPLORER_BTCRPCPASSWORD: btcpay123
