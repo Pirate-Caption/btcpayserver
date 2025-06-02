@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Bitcoin Node (原有配置)
+  # Bitcoin Node 
   bitcoind:
     image: btcpayserver/bitcoin:23.0
     container_name: btcpay_bitcoind_regtest
@@ -28,103 +28,6 @@ services:
       - "28333:28333"  # ZMQ tx
     volumes:
       - bitcoin_regtest_data:/data
-
-  # TRON Node for TRC20 USDT
-  tron-node:
-    image: tronprotocol/java-tron:GreatVoyage-v4.7.4
-    container_name: btcpay_tron_node
-    restart: unless-stopped
-    environment:
-      - JAVA_OPTS=-Xmx2g -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:+G1UseAdaptiveIHOP -XX:+G1UseStringDeduplication
-    ports:
-      - "8090:8090"   # HTTP API
-      - "8091:8091"   # gRPC API  
-      - "18888:18888" # P2P
-      - "50051:50051" # gRPC
-    volumes:
-      - tron_data:/java-tron/output-directory
-      - ./config/tron:/java-tron/config
-    command: >
-      bash -c "
-        mkdir -p /java-tron/config &&
-        cat > /java-tron/config/config.conf << 'EOF'
-        net {
-          type = mainnet
-        }
-        
-        storage {
-          db.version = 2,
-          db.engine = \"LEVELDB\",
-          db.directory = \"database\",
-          index.directory = \"index\",
-          transHistory.switch = \"on\"
-        }
-        
-        node.discovery = {
-          enable = true
-          persist = true
-          external.ip = null
-        }
-        
-        node {
-          trust.node = \"127.0.0.1:50051\"
-          walletExtensionApi = true
-          listen.port = 18888
-          connection.timeout = 2
-          tcpNettyWorkThreadNum = 0
-          udpNettyWorkThreadNum = 1
-          rpc {
-            port = 50051
-            maxConnectionIdleInMillis = 60000
-            maxConnectionAgeInMillis = 60000
-            maxInboundMessageSize = 4194304
-            maxHeaderListSize = 8192
-          }
-          http {
-            fullNodePort = 8090
-            solidityPort = 8091
-          }
-        }
-        
-        seed.node = {
-          ip.list = [
-            \"54.236.37.243:18888\",
-            \"52.53.189.99:18888\",
-            \"18.196.99.16:18888\",
-            \"34.253.187.192:18888\",
-            \"52.56.56.149:18888\",
-            \"35.180.51.163:18888\",
-            \"54.252.224.209:18888\",
-            \"18.228.15.36:18888\",
-            \"52.15.93.92:18888\",
-            \"34.220.77.106:18888\"
-          ]
-        }
-        
-        genesis.block = {
-          timestamp = \"0\"
-          parentHash = \"0xe58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f\"
-        }
-        
-        block = {
-          needSyncCheck = true
-          maintenanceTimeInterval = 21600000
-        }
-        
-        vm = {
-          supportConstant = true
-          minTimeRatio = 0.0
-          maxTimeRatio = 5.0
-          saveInternalTx = true
-        }
-        EOF
-        java -jar FullNode.jar -c /java-tron/config/config.conf
-      "
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/wallet/getnowblock"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Ethereum Node for ERC20 USDT
   geth:
@@ -165,7 +68,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # NBXplorer - 支持多链
+  # NBXplorer - 只支持比特币相关链
   nbxplorer:
     image: nicolasdorier/nbxplorer:2.5.4
     container_name: btcpay_nbxplorer_regtest
@@ -173,19 +76,16 @@ services:
     depends_on:
       - bitcoind
       - postgres
-      - geth
     environment:
       NBXPLORER_NETWORK: regtest
       NBXPLORER_BIND: 0.0.0.0:32838
-      NBXPLORER_CHAINS: btc,eth,btc,ltc,lbtc,usdt
+      # 只配置比特币链
+      NBXPLORER_CHAINS: btc
       # Bitcoin 配置
       NBXPLORER_BTCRPCUSER: btcpay
       NBXPLORER_BTCRPCPASSWORD: btcpay123
       NBXPLORER_BTCRPCURL: http://bitcoind:18443/
       NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
-      # Ethereum 配置
-      NBXPLORER_ETHRPCURL: http://geth:8545/
-      NBXPLORER_ETHNODEFALLBACK: 1
       # 数据库配置
       NBXPLORER_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Database=nbxplorer;Password=postgres
       NBXPLORER_NOAUTH: 1
@@ -255,52 +155,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # TronBox 开发工具 (可选 - 用于智能合约开发和测试)
-  tronbox:
-    image: tronprotocol/tronbox:latest
-    container_name: btcpay_tronbox
-    restart: "no"
-    volumes:
-      - ./contracts:/app
-      - tronbox_data:/root
-    working_dir: /app
-    depends_on:
-      - tron-node
-    profiles:
-      - development
-    command: tail -f /dev/null
-
-  # TRON Grid API 代理 (可选 - 作为备用RPC端点)
-  tron-grid-proxy:
-    image: nginx:alpine
-    container_name: btcpay_tron_grid_proxy
-    restart: unless-stopped
-    ports:
-      - "8092:80"
-    volumes:
-      - ./config/nginx/tron-grid.conf:/etc/nginx/conf.d/default.conf
-    profiles:
-      - production
-    command: >
-      sh -c "
-        cat > /etc/nginx/conf.d/default.conf << 'EOF'
-        server {
-            listen 80;
-            server_name localhost;
-            
-            location / {
-                proxy_pass https://api.trongrid.io;
-                proxy_set_header Host api.trongrid.io;
-                proxy_set_header X-Real-IP \$$remote_addr;
-                proxy_set_header X-Forwarded-For \$$proxy_add_x_forwarded_for;
-                proxy_ssl_server_name on;
-                proxy_buffering off;
-            }
-        }
-        EOF
-        nginx -g 'daemon off;'
-      "
-
 volumes:
   # Bitcoin 数据
   bitcoin_regtest_data:
@@ -314,20 +168,12 @@ volumes:
   postgres_regtest_data:
     driver: local
   
-  # TRON 数据
-  tron_data:
-    driver: local
-  
   # Ethereum 数据
   geth_mainnet_data:
     driver: local
   
   # Redis 数据
   redis_data:
-    driver: local
-  
-  # TronBox 数据
-  tronbox_data:
     driver: local
 
 # 网络配置
@@ -337,6 +183,3 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
-
-# 开发和生产环境配置文件
-# 已移除不被支持的顶层 profiles 配置

@@ -2,14 +2,12 @@
 echo ========================================
 echo Starting BTCPay Server Development Environment
 echo With Multi-Crypto Support (BTC + USDT TRC20/ERC20)
+echo Using External TRON API (TronGrid)
 echo ========================================
 
 echo.
 echo [INFO] Creating necessary directories...
 if not exist "config\postgres" mkdir config\postgres
-if not exist "config\tron" mkdir config\tron
-if not exist "config\nginx" mkdir config\nginx
-if not exist "contracts" mkdir contracts
 
 echo.
 echo [INFO] Creating PostgreSQL initialization script...
@@ -19,31 +17,25 @@ echo GRANT ALL PRIVILEGES ON DATABASE nbxplorer TO postgres; >> config\postgres\
 echo GRANT ALL PRIVILEGES ON DATABASE btcpayserver TO postgres; >> config\postgres\01-init.sql
 
 echo.
-echo [1/7] Stopping any existing containers...
+echo [1/5] Stopping any existing containers...
 docker-compose -f docker-compose.dev.yml down
 
 echo.
-echo [2/7] Pulling latest images...
+echo [2/5] Pulling latest images...
 docker-compose -f docker-compose.dev.yml pull
 
 echo.
-echo [3/7] Starting core services (Database, Bitcoin)...
+echo [3/5] Starting core services (Database, Bitcoin, Redis)...
 docker-compose -f docker-compose.dev.yml up -d postgres bitcoind redis
 
 echo.
-echo [4/7] Waiting for core services to initialize...
+echo [4/5] Waiting for core services to initialize...
 timeout /t 30 /nobreak > nul
 
 echo.
-echo [5/7] Starting blockchain nodes (TRON, Ethereum)...
-docker-compose -f docker-compose.dev.yml up -d tron-node geth
-
-echo.
-echo [6/7] Waiting for blockchain nodes...
-timeout /t 45 /nobreak > nul
-
-echo.
-echo [7/7] Starting NBXplorer...
+echo [5/5] Starting Ethereum and NBXplorer...
+docker-compose -f docker-compose.dev.yml up -d geth
+timeout /t 15 /nobreak > nul
 docker-compose -f docker-compose.dev.yml up -d nbxplorer
 
 echo.
@@ -57,13 +49,13 @@ echo ========================================
 
 echo.
 echo Checking PostgreSQL...
-docker exec btcpay_postgres_regtest pg_isready -U postgres
+docker exec btcpay_postgres_regtest pg_isready -U postgres > nul 2>&1
 if %errorlevel% equ 0 (
     echo ✓ PostgreSQL is ready
 ) else (
     echo ✗ PostgreSQL is not ready
     echo   Checking logs...
-    docker logs btcpay_postgres_regtest --tail 10
+    docker logs btcpay_postgres_regtest --tail 5
 )
 
 echo.
@@ -77,9 +69,9 @@ if %errorlevel% equ 0 (
 
 echo.
 echo Checking Bitcoin Node...
-curl -s -o nul -w "%%{http_code}" --user btcpay:btcpay123 --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"test\",\"method\":\"getblockchaininfo\",\"params\":[]}" -H "content-type: text/plain;" http://localhost:18443/ > temp_btc.txt
+curl -s -o nul -w "%%{http_code}" --user btcpay:btcpay123 --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"test\",\"method\":\"getblockchaininfo\",\"params\":[]}" -H "content-type: text/plain;" http://localhost:18443/ > temp_btc.txt 2>nul
 set /p btc_status=<temp_btc.txt
-del temp_btc.txt
+del temp_btc.txt > nul 2>&1
 if "%btc_status%"=="200" (
     echo ✓ Bitcoin Node is ready
 ) else (
@@ -87,22 +79,22 @@ if "%btc_status%"=="200" (
 )
 
 echo.
-echo Checking TRON Node...
-curl -s -o nul -w "%%{http_code}" http://localhost:8090/wallet/getnowblock > temp_tron.txt
+echo Checking External TRON API...
+curl -s -o nul -w "%%{http_code}" https://api.trongrid.io/wallet/getnowblock > temp_tron.txt 2>nul
 set /p tron_status=<temp_tron.txt
-del temp_tron.txt
+del temp_tron.txt > nul 2>&1
 if "%tron_status%"=="200" (
-    echo ✓ TRON Node is ready
+    echo ✓ External TRON API is accessible
 ) else (
-    echo ✗ TRON Node is not ready ^(Status: %tron_status%^)
-    echo   Note: TRON node may take several minutes to sync
+    echo ✗ External TRON API is not accessible ^(Status: %tron_status%^)
+    echo   Note: Check internet connection
 )
 
 echo.
 echo Checking Ethereum Node...
-curl -s -o nul -w "%%{http_code}" -X POST -H "Content-Type: application/json" --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}" http://localhost:8545 > temp_eth.txt
+curl -s -o nul -w "%%{http_code}" -X POST -H "Content-Type: application/json" --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}" http://localhost:8545 > temp_eth.txt 2>nul
 set /p eth_status=<temp_eth.txt
-del temp_eth.txt
+del temp_eth.txt > nul 2>&1
 if "%eth_status%"=="200" (
     echo ✓ Ethereum Node is ready
 ) else (
@@ -112,13 +104,15 @@ if "%eth_status%"=="200" (
 
 echo.
 echo Checking NBXplorer...
-curl -s -o nul -w "%%{http_code}" http://localhost:32838/v1/health > temp_nbx.txt
+curl -s -o nul -w "%%{http_code}" http://localhost:32838/v1/health > temp_nbx.txt 2>nul
 set /p nbx_status=<temp_nbx.txt
-del temp_nbx.txt
+del temp_nbx.txt > nul 2>&1
 if "%nbx_status%"=="200" (
     echo ✓ NBXplorer is ready
 ) else (
     echo ✗ NBXplorer is not ready ^(Status: %nbx_status%^)
+    echo   Checking NBXplorer logs...
+    docker logs btcpay_nbxplorer_regtest --tail 5
 )
 
 echo.
@@ -130,23 +124,20 @@ echo ✅ Core Services:
 echo   • PostgreSQL Database: localhost:39372
 echo   • Redis Cache:         localhost:6379
 echo.
-echo 🔗 Blockchain Nodes:
+echo 🔗 Blockchain Services:
 echo   • Bitcoin RPC:         localhost:18443 ^(regtest^)
-echo   • TRON HTTP API:       http://localhost:8090
-echo   • TRON gRPC API:       localhost:8091
-echo   • Ethereum JSON-RPC:   http://localhost:8545
+echo   • TRON API:            https://api.trongrid.io ^(external^)
+echo   • Ethereum JSON-RPC:   http://localhost:8545 ^(mainnet^)
 echo   • Ethereum WebSocket:  ws://localhost:8546
 echo.
-echo 🔍 Block Explorers:
+echo 🔍 Block Explorer:
 echo   • NBXplorer API:       http://localhost:32838
 echo.
 echo 💰 Supported Payment Methods:
 echo   ✓ Bitcoin (BTC) - Native SegWit
 echo   ✓ Bitcoin Lightning Network  
-echo   ✓ USDT TRC20 (TRON Network)
+echo   ✓ USDT TRC20 (via external TronGrid API)
 echo   ✓ USDT ERC20 (Ethereum Network)
-echo   ✓ Liquid Bitcoin ^(L-BTC^)
-echo   ✓ Liquid Tether ^(L-USDT^)
 echo.
 echo 🚀 Next Steps:
 echo   1. Start BTCPay Server from Visual Studio
@@ -157,8 +148,8 @@ echo      - Install "BTCPayServer.Plugins.USDt"
 echo      - Restart BTCPay Server
 echo   4. Configure payment methods in Store Settings
 echo.
-echo 📋 Configuration Endpoints:
-echo   • TRON RPC for plugin:  http://localhost:8090
+echo 📋 Configuration Endpoints for BTCPay Server:
+echo   • TRON API:             https://api.trongrid.io
 echo   • Ethereum RPC:         http://localhost:8545
 echo   • Database Connection:  postgres://postgres:postgres@localhost:39372/btcpayserver
 echo.
@@ -168,10 +159,10 @@ echo   • Stop all:  docker-compose -f docker-compose.dev.yml down
 echo   • Rebuild:   docker-compose -f docker-compose.dev.yml up --build -d
 echo.
 echo ⚠️  Important Notes:
-echo   • TRON and Ethereum nodes need time to sync
-echo   • Use testnet/regtest for development
-echo   • Monitor disk space - blockchain data grows over time
-echo   • For production: switch to mainnet and use external RPC providers
+echo   • TRON uses external API ^(no local sync required^)
+echo   • Ethereum node needs time to sync for local development
+echo   • For production: use your own TRON RPC endpoint
+echo   • Monitor API rate limits for external TRON service
 echo.
 
 echo Press any key to continue...
@@ -183,8 +174,8 @@ echo.
 echo Test Bitcoin RPC:
 echo curl --user btcpay:btcpay123 --data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"test\",\"method\":\"getblockchaininfo\",\"params\":[]}" -H "content-type: text/plain;" http://localhost:18443/
 echo.
-echo Test TRON API:
-echo curl -X POST http://localhost:8090/wallet/getnowblock
+echo Test TRON API ^(external^):
+echo curl -X POST https://api.trongrid.io/wallet/getnowblock
 echo.
 echo Test Ethereum RPC:
 echo curl -X POST -H "Content-Type: application/json" --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}" http://localhost:8545
